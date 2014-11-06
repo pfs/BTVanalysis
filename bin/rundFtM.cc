@@ -48,6 +48,8 @@ void printHelp()
   printf("--flav       --> flavour configuration file\n");
   printf("--btag       --> tag efficiencies configuration file\n");
   printf("--in         --> input file with b-tag multiplicity distribution\n");
+  printf("--fix        --> csv list of categories to fix to MC expectation\n");
+  printf("--inc        --> do inclusive fit without differential breakup\n");
   printf("--ws         --> input file with a workspace\n");
   printf("--fit        --> fit type code (SF_b=0,SF_q=1,SF_b_vs_SF_q=2)\n");
   printf("Example: rundFtM --fit 0 --in plotter.root --flav flavParams_cfg.json --btag csvL_cfg.json\n");
@@ -63,8 +65,12 @@ int main(int argc, char* argv[])
 
   gStyle->SetOptFit(1111);
   gStyle->SetOptStat(0);
+  gStyle->SetOptTitle(0);
   
+  bool doInclusiveFit(false);
   TString url(""),wsurl("");
+  TString catsToFix("");
+  std::vector<Int_t> catsToFixVec;
   TString flavParFile(""),btagParFile("");
   Int_t fitType(dFtM::FIT_SFb);
   for(int i=1;i<argc;i++)
@@ -72,6 +78,8 @@ int main(int argc, char* argv[])
       string arg(argv[i]);
       if(arg.find("--help")!=string::npos)              { printHelp();	  return 0; }
       if(arg.find("--in")!=string::npos && i+1<argc)    { url=argv[i+1];         gSystem->ExpandPathName(url);         i++;  printf("in      = %s\n", url.Data());              }
+      if(arg.find("--fix")!=string::npos && i+1<argc)   { catsToFix=argv[i+1];                                         i++;  printf("categs to fix = %s\n", catsToFix.Data());              }
+      if(arg.find("--inc")!=string::npos)               { doInclusiveFit=true;                                               printf("Will run an inclusive fit\n"); }
       if(arg.find("--ws")!=string::npos && i+1<argc)    { wsurl=argv[i+1];       gSystem->ExpandPathName(wsurl);       i++;  printf("ws      = %s\n", wsurl.Data());            }
       if(arg.find("--flav")!=string::npos && i+1<argc)  { flavParFile=argv[i+1]; gSystem->ExpandPathName(flavParFile); i++;  printf("flavParFile = %s\n", flavParFile.Data());       }
       if(arg.find("--btag")!=string::npos && i+1<argc)  { btagParFile=argv[i+1]; gSystem->ExpandPathName(btagParFile); i++;  printf("btagFile  = %s\n", btagParFile.Data());    }
@@ -80,7 +88,17 @@ int main(int argc, char* argv[])
   if(url=="" && wsurl=="")                            { printHelp(); return 0; }
   if(url!="" && (flavParFile=="" || btagParFile=="")) { printHelp(); return 0; }
   if(wsurl!="")                                       { buildSFbHistos(wsurl); return 0;}
-  
+  if(catsToFix!="")
+    {
+      TObjArray *tkns=catsToFix.Tokenize(",");
+      for(Int_t itkn=0; itkn<tkns->GetEntriesFast(); itkn++)
+	{
+	  TString tkn=tkns->At(itkn)->GetName();
+	  catsToFixVec.push_back(tkn.Atoi());
+	}
+    }
+
+
   //output directory set to the same directory where root file is stored
   TString outDir(gSystem->DirName(url));
 
@@ -96,7 +114,7 @@ int main(int argc, char* argv[])
   RooMsgService::instance().getStream(1).removeTopic(ObjectHandling);
   
   //run fit
-  dFtM fitter(fitType, flavParFile, btagParFile, url);
+  dFtM fitter(fitType, flavParFile, btagParFile, url,catsToFixVec,doInclusiveFit);
   //fitter.printConfiguration(cout);
   fitter.fit();
   fitter.save(outDir+("/"+fitter.getWP()+"_workspace.root").c_str());
@@ -119,7 +137,22 @@ int main(int argc, char* argv[])
       p->Draw();
       p->cd();
 
+      //check if category is available
       TH1F *h=bmultHistos[ ch[ich]+"_exp" ];
+      if(bmultHistos[ ch[ich] ]==0 || h==0 || h->Integral()==0)
+	{
+	  TPaveText *pt=new TPaveText(0.4,0.45,0.6,0.55,"brNDC");
+	  pt->SetBorderSize(0);
+	  pt->SetFillStyle(0);
+	  pt->SetTextAlign(12);
+	  pt->SetTextColor(kGray+1);
+	  pt->SetTextFont(42);
+	  pt->AddText("...unavailable category...");
+	  pt->Draw();
+	  continue;
+	}
+
+      
       h->Draw("hist");
       h->GetYaxis()->SetTitleOffset(0.4);
       h->GetYaxis()->SetTitleSize(0.06);
@@ -182,7 +215,8 @@ int main(int argc, char* argv[])
       pt->SetFillStyle(0);
       pt->SetTextAlign(12);
       pt->SetTextSize(0.07);
-      pt->AddText("CMS preliminary, #sqrt{s}=8 TeV");
+      pt->SetTextFont(42);
+      pt->AddText("#bf{CMS} #it{preliminary}   5.0 fb^{-1} (7 TeV)");
       pt->Draw();
   
       TLegend *leg=new TLegend(0.7,0.95,0.99,0.98);
@@ -238,28 +272,34 @@ void buildSFbHistos(TString wsurl)
       ptDiscgr[i]->SetLineWidth(1);
     }
 
+  std::vector<TGraphAsymmErrors *> allEffMeasurements, allSFMeasurements;
   TObjArray *tkns=wsurl.Tokenize(",");
   for(Int_t iurl=0; iurl<tkns->GetEntriesFast(); iurl++)
     {
       TString url(tkns->At(iurl)->GetName());
+      TString algo("csv");
+      if(url.Contains("_jp")) algo="jp";
+      if(url.Contains("_tchp")) algo="tchp";
 
       TFile *inF=TFile::Open(url);
       if(inF==0) continue;
       if(inF->IsZombie()) { inF->Close(); continue; }
 
-      TString pf("_"); pf+= iurl;
+      TString pf("_"); pf+=algo; pf+= iurl;
       TString outDir(gSystem->DirName(url));
       TString tagger(gSystem->BaseName(outDir));
 
       RooWorkspace *w=(RooWorkspace *) inF->Get("w");
       RooRealVar *mcstat=w->var("mcstat");
 
-      TGraphErrors *mcebGr=new TGraphErrors;
+      TGraphAsymmErrors *mcebGr=new TGraphAsymmErrors;
       mcebGr->SetName("mcebGr"+pf); mcebGr->SetMarkerStyle(24); mcebGr->SetLineWidth(2); mcebGr->SetLineColor(1); mcebGr->SetFillStyle(0);
-      TGraphErrors *ebGr=(TGraphErrors *)mcebGr->Clone("eb"+pf);
+      TGraphAsymmErrors *ebGr=(TGraphAsymmErrors *)mcebGr->Clone("eb"+pf);
       ebGr->SetMarkerStyle(20);
-      TGraphErrors *sfbGr=(TGraphErrors *)mcebGr->Clone("sfb"+pf);
+      allEffMeasurements.push_back(ebGr);
+      TGraphAsymmErrors *sfbGr=(TGraphAsymmErrors *)mcebGr->Clone("sfb"+pf);
       sfbGr->SetMarkerStyle(20);
+      allSFMeasurements.push_back(sfbGr);
       
       const RooArgSet *poi=w->set("poi");
       RooFIter iter = poi->fwdIterator();
@@ -284,6 +324,9 @@ void buildSFbHistos(TString wsurl)
 	  w->loadSnapshot("postfit");
 	  Float_t sfb( iSFb->getVal() );
 	  Float_t sfbUnc( iSFb->getError() );
+
+	  if(sfbUnc<1e-5) continue; // if fixed do not consider it
+
 	  Float_t eb( mceb*sfb );
 	  Float_t ebUnc( mceb*sfbUnc );
 
@@ -292,16 +335,14 @@ void buildSFbHistos(TString wsurl)
 	  Float_t pt=0.5*(ptCats[icat+1]+ptCats[icat]);
 	  Float_t ptUnc=0.5*(ptCats[icat+1]-ptCats[icat]);
 
-	  if(icat==0) continue;
-
 	  //fill plots
 	  Int_t np=mcebGr->GetN();
 	  mcebGr->SetPoint(np,pt,mceb);
-	  mcebGr->SetPointError(np,ptUnc,mcebUnc);
+	  mcebGr->SetPointError(np,ptUnc,ptUnc,mcebUnc,mcebUnc);
 	  ebGr->SetPoint(np,pt,eb);
-	  ebGr->SetPointError(np,ptUnc,ebUnc);
+	  ebGr->SetPointError(np,ptUnc,ptUnc,ebUnc,ebUnc);
 	  sfbGr->SetPoint(np,pt,sfb);
-	  sfbGr->SetPointError(np,ptUnc,sfbUnc);
+	  sfbGr->SetPointError(np,ptUnc,ptUnc,sfbUnc,sfbUnc);
 	  
 	  //summary plots
 	  np=ptSFgr[icat]->GetN();
@@ -332,7 +373,8 @@ void buildSFbHistos(TString wsurl)
       pt->SetFillStyle(0);
       pt->SetTextAlign(12);
       pt->SetTextSize(0.07);
-      pt->AddText("CMS preliminary, #sqrt{s}=8 TeV");
+      pt->SetTextFont(42);
+      pt->AddText("#bf{CMS} #it{preliminary}   5.0 fb^{-1} (7 TeV)");
       pt->Draw();
 
       TLegend *leg=new TLegend(0.6,0.95,0.95,0.98);
@@ -372,8 +414,20 @@ void buildSFbHistos(TString wsurl)
       inF->Close();
     }
 
-  
+  //save results to file
+  TFile *fOut=TFile::Open("dFtM_summary.root","RECREATE");
+  for(size_t i=0; i<allEffMeasurements.size(); i++)
+    {
+      allEffMeasurements[i]->Write();
+      allSFMeasurements[i]->Write();
+    }
+  fOut->Close();
+  cout << "Summary results have been saved @ dFtM_summary.root" << endl;
+}
 
+///the following needs better thought
+
+/*
 
   //absolute efficiency and scale factor
   TCanvas *overvieweffc= new TCanvas("overvieweffc","overviewc",500,500);
@@ -416,7 +470,8 @@ void buildSFbHistos(TString wsurl)
   pt->SetFillStyle(0);
   pt->SetTextAlign(12);
   pt->SetTextSize(0.04);
-  pt->AddText("CMS preliminary, #sqrt{s}=8 TeV");
+  pt->SetTextFont(42);
+  pt->AddText("#bf{CMS} #it{preliminary}   5.0 fb^{-1} (7 TeV)");
   pt->Draw();
   
   overvieweffc->Modified();
@@ -458,16 +513,12 @@ void buildSFbHistos(TString wsurl)
   pt->SetFillStyle(0);
   pt->SetTextAlign(12);
   pt->SetTextSize(0.04);
-  pt->AddText("CMS preliminary, #sqrt{s}=8 TeV");
+  pt->SetTextFont(42);
+  pt->AddText("#bf{CMS} #it{preliminary}   5.0 fb^{-1} (7 TeV)");
   pt->Draw();
   
   overviewdiscc->Modified();
   overviewdiscc->Update();
   overviewdiscc->SaveAs("overviewdisc.png");
 
-
-
-
-
-
-}
+*/

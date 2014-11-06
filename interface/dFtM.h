@@ -55,7 +55,7 @@ class dFtM
   /**
      @short CTOR
    */
-  dFtM(int fitType, TString flavCfg, TString effCfg, TString btagsUrl);
+  dFtM(int fitType, TString flavCfg, TString effCfg, TString btagsUrl,std::vector<Int_t> &fixCategories,bool inclusiveFit);
 
   /**
      @short init the PDFs for the fit

@@ -26,11 +26,11 @@ using namespace std;
 
 
 //
-dFtM::dFtM(int fitType, TString flavCfg, TString effCfg, TString btagsUrl) : 
+dFtM::dFtM(int fitType, TString flavCfg, TString effCfg, TString btagsUrl,std::vector<Int_t> &fixCategories, bool inclusiveFit) : 
   fitType_(fitType),
   ws_(new RooWorkspace("w")),
   mc_(0),
-  data_(0)
+  data_(0)  
 { 
   RooArgSet poi;
   ws_->factory("musignal[1.0]");
@@ -51,10 +51,9 @@ dFtM::dFtM(int fitType, TString flavCfg, TString effCfg, TString btagsUrl) :
    case FIT_SFq:         fitTypeTitle_="SF_{q}";        fitTypeName_="sfq";      break;
    case FIT_SFb_AND_SFq: fitTypeTitle_="SF_{b};SF_{q}"; fitTypeName_="sfbvssfq"; break;
    }
-  float min_SFl(1.0), max_SFl(1.0),min_SFb(1.0),max_SFb(1.0),min_SFc(1.0), max_SFc(1.0);;
-  if(fitType_==FIT_SFq || fitType_==FIT_SFb_AND_SFq) { min_SFl=0.5; max_SFl=2.0; }
-  //if(fitType_==FIT_SFc || fitType_==FIT_SFc_AND_SFq) { min_SFc=0.5; max_SFc=2.0; }
-  if(fitType_==FIT_SFb || fitType_==FIT_SFb_AND_SFq) { min_SFb=0.5; max_SFb=2.0; }
+  float min_SFl(1.0), max_SFl(1.0),min_SFb(1.0),max_SFb(1.0),min_SFc(1.0), max_SFc(1.0);
+  if(fitType_==FIT_SFq || fitType_==FIT_SFb_AND_SFq) { min_SFl=0.8; max_SFl=2.0; }
+  if(fitType_==FIT_SFb || fitType_==FIT_SFb_AND_SFq) { min_SFb=0.5; max_SFb=1.2; }
   std::set<Int_t> jetKin;
   for(std::map<std::string, std::pair<Int_t,Int_t> >::iterator cIt=catToJetKinematics_.begin();
       cIt!=catToJetKinematics_.end();
@@ -63,24 +62,46 @@ dFtM::dFtM(int fitType, TString flavCfg, TString effCfg, TString btagsUrl) :
       jetKin.insert(cIt->second.first);
       jetKin.insert(cIt->second.second);
     }
+
   char expBuf[500];
+  if(inclusiveFit && min_SFb!=max_SFb)
+    {
+      sprintf(expBuf,"SFb_global[1.0,%f,%f]",min_SFb,max_SFb);
+      RooAbsArg *var=ws_->factory(expBuf);  
+      poi.add(*var);
+    }
+
+  
   for(std::set<Int_t>::iterator jkIt=jetKin.begin(); jkIt!=jetKin.end(); jkIt++)
     {
-      sprintf(expBuf,"SFbk%d[1.0,%f,%f]",*jkIt,min_SFb,max_SFb);
-      RooAbsArg *var=ws_->factory(expBuf);    
-      if(min_SFb!=max_SFb)  poi.add(*var);
-      //     else                  var->setConstant(true);
-      
+      if(!inclusiveFit)
+	{
+	  sprintf(expBuf,"SFbk%d[1.0,%f,%f]",*jkIt,min_SFb,max_SFb);
+	  RooAbsArg *var=ws_->factory(expBuf);    
+	  if(min_SFb!=max_SFb)  poi.add(*var);
+	  if(find(fixCategories.begin(),fixCategories.end(),*jkIt)!=fixCategories.end()) 
+	    {
+	      ((RooRealVar *)var)->setConstant(true);
+	      std::cout << "[dFtM] Fixing SFb to 1 in category " << *jkIt << std::endl;
+	    }
+	  //     else                  var->setConstant(true);
+	}
+      else
+	{
+	  sprintf(expBuf,"SFbk%d",*jkIt);
+	  RooFormulaVar sfbk(expBuf,"1.0*@0",RooArgList(*(ws_->var("SFb_global"))));
+	  ws_->import(sfbk);
+	}
+
       sprintf(expBuf,"SFck%d[1.0,%f,%f]",*jkIt,min_SFc,max_SFc);
-      var=ws_->factory(expBuf);    
-      //if(min_SFc!=max_SFc)  poi.add(*var);
-      //var->setConstant(true);
+      RooAbsArg *var=ws_->factory(expBuf);    
+      if(min_SFc!=max_SFc)  poi.add(*var);
+      else ((RooRealVar *)var)->setConstant(true);
 
       sprintf(expBuf,"SFlk%d[1.0,%f,%f]",*jkIt,min_SFl,max_SFl);
-      ws_->factory(expBuf);    
       var=ws_->factory(expBuf);    
       if(min_SFl!=max_SFl)  poi.add(*var);
-      //else                  var->setConstant(true);
+      else                  ((RooRealVar *)var)->setConstant(true);
     }
   ws_->defineSet("poi",poi);  
 
@@ -168,7 +189,7 @@ void dFtM::parseFitConfig(TString url)
 
 		  if(nuisVar==0)
 		    {
-		      sprintf(expBuf,"Gaussian::%s_constr(0.0,%s[0,-5,5],1.0)",uncs[iunc].c_str(),uncs[iunc].c_str());
+		      sprintf(expBuf,"Gaussian::%s_constr(0.0,%s[0,-1,1],1.0)",uncs[iunc].c_str(),uncs[iunc].c_str());
 		      RooGaussian *nuisConstr=(RooGaussian *)ws_->factory(expBuf);
 		      constr.add( *nuisConstr );
 		      
