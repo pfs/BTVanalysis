@@ -91,6 +91,7 @@ dFtM::dFtM(int fitType, TString flavCfg, TString effCfg, TString btagsUrl,std::v
 	  sprintf(expBuf,"SFbk%d",*jkIt);
 	  RooFormulaVar sfbk(expBuf,"1.0*@0",RooArgList(*(ws_->var("SFb_global"))));
 	  ws_->import(sfbk);
+	  cout << sfbk.getVal() << endl;
 	}
 
       sprintf(expBuf,"SFck%d[1.0,%f,%f]",*jkIt,min_SFc,max_SFc);
@@ -443,7 +444,8 @@ void dFtM::initModel()
 	  TString ijetKin("k"); 
 	  if(ijet==0) ijetKin += jetKinematics.first;
 	  if(ijet==1) ijetKin += jetKinematics.second;
-	  SFb.push_back( ws_->var("SFb"+ijetKin) );
+	  if( ws_->var("SFb"+ijetKin) ) SFb.push_back( ws_->var("SFb"+ijetKin) );
+	  else  SFb.push_back( ws_->function("SFb"+ijetKin) );
 	  SFc.push_back( ws_->var("SFc"+ijetKin) );
 	  SFl.push_back( ws_->var("SFl"+ijetKin) );
 	  ijetKin="k_"; 
