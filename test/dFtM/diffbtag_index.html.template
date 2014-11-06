@@ -1,0 +1,55 @@
+<html>
+<head>
+<script type="text/javascript">
+function showTagger(x,xtit) {
+
+document.write("<table>");
+
+document.write("<tr bgcolor=\"#E6E6B8\"><td colspan=4><a id=\""+x+"\"><h1><b>"+xtit+"</b></h1></a></td></tr>");
+
+document.write("<tr><td bgcolor=\"#E6E6B8\">Model inputs</td><td colspan=2>")
+document.write("Tag efficiencies: <a href=\""+x+"_eff.json\">json</a>&nbsp;&nbsp;&nbsp;&nbsp;")
+document.write("Flavour components: <a href=\"flavbreakup.json\">json</a>&nbsp;&nbsp;&nbsp;&nbsp;")
+document.write("Data and PDFs for background: <a href=\""+x+"_btags.root\">root</a>&nbsp;&nbsp;&nbsp;&nbsp;")
+document.write("Workspace: <a href=\""+x+"_workspace.root\">root</a>")
+document.write("</td></tr>")
+
+document.write("<tr><td bgcolor=\"#E6E6B8\">Postfit model</td>")
+document.write("<td><img height=400 src=\"bmultextended_"+x+".png\"/></td>");
+document.write("<td><img height=400 src=\"bmultextended_"+x+"_log.png\"/></td>");
+document.write("</td></tr>")
+
+document.write("<tr bgcolor=\"#E6E6B8\">");
+document.write("<td><b>[Category]</b></td>");
+document.write("<td><b>MC based prediction</b></td>");
+document.write("<td><b>Data-driven DY prediction</b></td>");
+document.write("<td><b>Closure test for DY prediction</b></td>");
+document.write("</tr>");  
+
+var totalCats=20;
+for (var i=1; i<=totalCats; i++)
+  {
+    document.write("<tr>");
+    document.write("<td bgcolor=\"#E6E6B8\"><b>[Category #"+i+"]</b></td>");
+    document.write("<td><img height=300 src=\"corpredbtvkin"+i+x+".png\"/></td>");
+    document.write("<td><img height=300 src=\"ddcorpredbtvkin"+i+x+".png\"/></td>");
+    document.write("<td><img height=300 src=\"dyclosurebtvkin"+i+x+".png\"/></td>");
+    document.write("</tr>");  
+  }
+document.write("</table>");
+}
+</script>
+
+<link rel="stylesheet" type="text/css" href="tableFormat.css"></link>
+</head>
+
+
+
+<body>
+
+
+<script type="text/javascript">showTagger("_TAGGER__WP_","_TAGGER_ working point #_WP_")</script>
+
+
+</body>
+</html>

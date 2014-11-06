@@ -1,0 +1,9 @@
+<use name="UserCode/BTVanalysis"/>
+<use name="lhapdf"/>
+<use name="roottmva"/>
+<use name="roofit"/>
+<use name="roostats"/>
+<environment>
+  <bin name="rundFtM"                    file="rundFtM.cc"></bin>
+</environment>
+<Flags CXXFLAGS="-g"/>
